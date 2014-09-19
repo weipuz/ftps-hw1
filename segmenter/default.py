@@ -30,7 +30,7 @@ class Pdist(dict):
         else: return None                                       #pw=None when a character longer than 1 is missing 
 
 # the default segmenter does not use any probabilities, but you could ...
-Pw  = Pdist(opts.counts1w)
+Pw  = Pdist(opts.counts1w)         #use counts1w as the total Pw function
 
 
 class Segmenter():
@@ -52,20 +52,20 @@ class Segmenter():
 	# segment the entire input file
 	def run(self):
 		for line in self.lines:
-			self.segmentLine(line)
+			print self.segmentLine(line)
 
 	# segment a sentence
 	def segmentLine(self, line):
 		if 0 == len(line):
 			return ""
-		chart = [None] * (len(line) )
-		print len(line)
-		heap = []
-		# for each word that matches input at position 0
+		chart = [None] * (len(line) )   #chart to restore every entry containing the information of every newword 
+		heap = []                       #initialize heap queue
+		
+		####### for each word that matches input at position 0 #########
 		for i in range(1, len(line)+1 ):
 			word = line[: i]
 			
-			# insert Entry(word, 0, logPw(word), None) into heap
+			###### insert Entry(word, 0, logPw(word), None) into heap  #########
 			if Pw(word) != None:
 			    entry = (word, 0, math.log10(Pw(word)), None)
 			    heapq.heappush(heap, entry)
@@ -88,9 +88,11 @@ class Segmenter():
 				prev_entry = chart[end_index]
 				# if entry has a higher probability than preventry:
 				if entry[2] > prev_entry[2]:
-					
 					# chart[endindex] = entry
-					chart[end_index] = entry
+					chart[end_index] = entry  
+				else:
+				      continue  
+				
 			else:
 				chart[end_index] = entry
 			# for each newword that matches input starting at position endindex+1
@@ -101,7 +103,7 @@ class Segmenter():
 				       # newentry = Entry(newword, endindex+1, entry.log-probability + logPw(newword), entry)
 				       new_entry = (new_word, end_index+1, entry[2]+math.log10(Pw(new_word)), end_index)
 				
-				       #print new_word, math.log10(Pw(new_word)), new_entry
+				      # print new_word, math.log10(Pw(new_word)), new_entry
 					   
 				       # if newentry does not exist in heap:
 				       if not(new_entry in heap):
@@ -112,32 +114,32 @@ class Segmenter():
 		final_index = len(line)-1
 		# finalentry = chart[finalindex]
 		final_entry = chart[final_index]
-		# print chart
+		#print chart
 		seg = []
 		# Print out the argmax output by following the backpointer from finalentry until you reach the first word
 		while None != final_entry[3]:
 			seg.append(final_entry[0])
 			
 			final_entry = chart[final_entry[3]]
+		seg.append(final_entry[0])
 		return " ".join(seg[: : -1])
 
 
 
 s = Segmenter(opts.input)
 #print s.lines[2]
-print s.segmentLine(s.lines[5])    #test command for segment the first line
-#print s.run()                     #test command for segment the entire file
+#print s.segmentLine(s.lines[5])    #test command for segment the first line
+s.run()                     #test command for segment the entire file
 
 
-
-#print Pw(unicode('法正','utf-8'))      #test command for Pw function
 old = sys.stdout
 sys.stdout = codecs.lookup('utf-8')[-1](sys.stdout)
 # ignoring the dictionary provided in opts.counts
 # from io import open
-with open(opts.input) as f:
-    for line in f:
-        utf8line = unicode(line.strip(), 'utf-8')
-        output = [i for i in utf8line]  # segmentation is one word per character in the input
-      #  print " ".join(output)
+
+##with open(opts.input) as f:
+##    for line in f:
+##        utf8line = unicode(line.strip(), 'utf-8')
+##        output = [i for i in utf8line]  # segmentation is one word per character in the input
+ ##       print " ".join(output)
 sys.stdout = old
