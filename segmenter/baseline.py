@@ -48,7 +48,7 @@ class Segmenter():
 
 	# load a input file
 	def __init__(self, file):
-		self.lines = [ unicode(line.strip(), 'utf-8') for line in open(file) ]
+		self.text = [ unicode(text.strip(), 'utf-8') for text in open(file) ]
 		self.test_file = codecs.open('test.log', 'w', "utf-8")
 		self.output_file = codecs.open('output.log', 'w', "utf-8")
 
@@ -79,6 +79,7 @@ class Segmenter():
 			s += "None"
 		return s
 
+	# pop the top of a heap
 	def heapPop(self, heap):
 		top = {"word": "", "start": sys.maxint, "logprob": 0.0, "back": None}
 		top_index = 0;
@@ -95,20 +96,20 @@ class Segmenter():
 	# segment the entire input file
 	def run(self):
 		ans = []
-		for line in self.lines:
-			ans0 = self.segmentLine(line)
+		for sentence in self.text:
+			ans0 = self.segmentSent(sentence)
 			self.printOutput(ans0)
 			ans.append(ans0)
 		return ans
 
 	# segment a sentence
-	def segmentLine(self, line):
-		# line(input): the input sequence of characters
-		if 0 == len(line):
+	def segmentSent(self, sentence):
+		# sentence: the input sequence of characters
+		if 0 == len(sentence):
 			return ""
-		self.printTest("input: " + line)
+		self.printTest("input: " + sentence)
 		# chart: the dynamic programming table to store the argmax for every prefix of input, indexed by character position in input
-		chart = [None] * (len(line) + 1)
+		chart = [None] * (len(sentence) + 1)
 		# heap: a list or priority queue containing the entries to be expanded, sorted on start-position or log-probability
 		heap = []
 		# entry: each entry in the chart has four components: Entry(word, start-position, log-probability, back-pointer), the back-pointer in each entry links it to a previous entry that it extends
@@ -117,8 +118,8 @@ class Segmenter():
 		## Initialize the heap ##
 
 		# for each word that matches input at position 0
-		for i in range(1, self.min(len(line) + 1, Pw.maxlen)):
-			word = line[: i]
+		for i in range(1, self.min(len(sentence) + 1, Pw.maxlen)):
+			word = sentence[: i]
 			p = Pw(word)
 			if p != None:
 				# insert Entry(word, 0, logPw(word), None) into heap
@@ -132,6 +133,8 @@ class Segmenter():
 		while len(heap):
 			# entry = top entry in the heap
 			entry = self.heapPop(heap)
+			if None == entry:
+				break
 			self.printTest( "pop: word=" + entry["word"] + " logprob=" + repr(entry["logprob"]) )
 			# get the endindex based on the length of the word in entry
 			end_index = entry["start"] + len(entry["word"]) - 1
@@ -150,8 +153,8 @@ class Segmenter():
 				# chart[endindex] = entry
 				chart[end_index] = entry
 			# for each newword that matches input starting at position endindex+1
-			for i in range(end_index + 2, len(line) + 1):
-				new_word = line[end_index + 1 : i]
+			for i in range(end_index + 2, len(sentence) + 1):
+				new_word = sentence[end_index + 1 : i]
 				p = Pw(new_word)
 				if None != p:
 					# newentry = Entry(newword, endindex+1, entry.log-probability + logPw(newword), entry)
@@ -165,7 +168,7 @@ class Segmenter():
 		## Get the best segmentation ##
 
 		# finalindex is the length of input
-		final_index = len(line) - 1
+		final_index = len(sentence) - 1
 		# finalentry = chart[finalindex]
 		final_entry = chart[final_index]
 		seg = []
@@ -174,11 +177,43 @@ class Segmenter():
 			self.printTest("final[ 0 ]: " + self.strEntry(final_entry))
 			seg.append(final_entry["word"])
 			final_entry = final_entry["back"]
+		# reverse it
+		seg = seg[: : -1]
+
+		# check each single character
+		combine = ""
+		for index, word in enumerate(seg):
+			if 1 == len(word) and not (word in Pw):
+				combine += word
+			elif "" != combine:
+				self.printTest("combine: " + combine + " begin: " + seg[index - len(combine)])
+				seg[index - 1] = combine
+				del seg[index - len(combine) : index - 1]
+				index -= len(combine)
+				combine = ""
+
+		# put missing words back
+		for index in range( len(seg) ):
+			missing = ""
+			# find missing word
+			for letter in seg[index]:
+				if len(sentence) == 0:
+					break
+				if letter != sentence[0]:
+					missing += sentence[0]
+				sentence = sentence[1 :]
+			if "" != missing:
+				self.printTest("missing: " + missing)
+				seg.insert(index, missing)
+				-- index
+			if len(sentence) == 0:
+				break
+
 		self.printTest("")
-		return " ".join(seg[: : -1])
+		return " ".join(seg)
 
 s = Segmenter(opts.input)
-#print s.segmentLine(s.lines[4])
+#print s.segmentSent(s.text[4])
 ans = s.run()
 for item in ans:
 	print item
