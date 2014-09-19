@@ -53,6 +53,7 @@ class Segmenter():
 	def run(self):
 		for line in self.lines:
 			print self.segmentLine(line)
+			
 
 	# segment a sentence
 	def segmentLine(self, line):
@@ -128,8 +129,8 @@ class Segmenter():
 
 s = Segmenter(opts.input)
 #print s.lines[2]
-#print s.segmentLine(s.lines[5])    #test command for segment the first line
-s.run()                     #test command for segment the entire file
+print s.segmentLine(s.lines[0])    #test command for segment the first line
+                   #test command for segment the entire file
 
 
 old = sys.stdout
@@ -137,9 +138,6 @@ sys.stdout = codecs.lookup('utf-8')[-1](sys.stdout)
 # ignoring the dictionary provided in opts.counts
 # from io import open
 
-##with open(opts.input) as f:
-##    for line in f:
-##        utf8line = unicode(line.strip(), 'utf-8')
-##        output = [i for i in utf8line]  # segmentation is one word per character in the input
- ##       print " ".join(output)
+#s.run() 
+ 
 sys.stdout = old
