@@ -1,5 +1,5 @@
 
-import sys, codecs, optparse, os, math, heapq
+import sys, codecs, optparse, os, math
 # parse the input command lines
 optparser = optparse.OptionParser()
 optparser.add_option("-c", "--unigramcounts", dest='counts1w', default=os.path.join('data', 'count_1w.txt'), help="unigram counts")
@@ -70,13 +70,27 @@ class Segmenter():
 		else:
 			return num1
 
+	# convert entry to string for printing
 	def strEntry(self, entry):
-		s = "chartEntry(" + entry[2] + ", start=" + repr(entry[0]) + ", end=, logprob=" + repr(entry[1]) + ", backptr="
-		if None != entry[3]:
-			s += entry[3][2]
+		s = "chartEntry(" + entry["word"] + ", start=" + repr(entry["start"]) + ", end=, logprob=" + repr(entry["logprob"]) + ", backptr="
+		if None != entry["back"]:
+			s += entry["back"]["word"]
 		else:
 			s += "None"
 		return s
+
+	def heapPop(self, heap):
+		top = {"word": "", "start": sys.maxint, "logprob": 0.0, "back": None}
+		top_index = 0;
+		for index, item in enumerate(heap):
+			if (item["start"] < top["start"]) or (item["start"] == top["start"] and item["logprob"] > top["logprob"]):
+				top = item
+				top_index = index
+		if top["word"] != "":
+			del heap[top_index]
+			return top
+		else:
+			return None
 
 	# segment the entire input file
 	def run(self):
@@ -108,24 +122,24 @@ class Segmenter():
 			p = Pw(word)
 			if p != None:
 				# insert Entry(word, 0, logPw(word), None) into heap
-				entry = (0, math.log10(p), word, None)
-				self.printTest("Adding: " + entry[2] + " " + repr(entry[1]) )
-				heapq.heappush(heap, entry)
+				entry = {"word": word, "start": 0, "logprob": math.log10(p), "back": None} #(0, math.log10(p), word, None)
+				self.printTest("Adding: " + entry["word"] + " " + repr(entry["logprob"]) )
+				heap.append(entry)
 
 		## Iteratively fill in chart[i] for all i ##
 
 		# while heap is nonempty:
 		while len(heap):
 			# entry = top entry in the heap
-			entry = heapq.heappop(heap)
-			self.printTest( "pop: word=" + entry[2] + " logprob=" + repr(entry[1]) )
+			entry = self.heapPop(heap)
+			self.printTest( "pop: word=" + entry["word"] + " logprob=" + repr(entry["logprob"]) )
 			# get the endindex based on the length of the word in entry
-			end_index = entry[0] + len(entry[2]) - 1
+			end_index = entry["start"] + len(entry["word"]) - 1
 			# if chart[endindex] has a previous entry, preventry
-			if end_index < len(chart) and None != chart[end_index] and len(chart[end_index]) == 4 and None != chart[end_index][3]:
-				prev_entry = chart[end_index][3]
+			if end_index < len(chart) and None != chart[end_index] and None != chart[end_index]["back"]:
+				prev_entry = chart[end_index]["back"]
 				# if entry has a higher probability than preventry:
-				if entry[1] > prev_entry[1]:
+				if entry["logprob"] > prev_entry["logprob"]:
 					# chart[endindex] = entry
 					chart[end_index] = entry
 				# if entry has a lower or equal probability than preventry:
@@ -141,12 +155,12 @@ class Segmenter():
 				p = Pw(new_word)
 				if None != p:
 					# newentry = Entry(newword, endindex+1, entry.log-probability + logPw(newword), entry)
-					new_entry = (end_index + 1, entry[1] + math.log10(p), new_word, entry)
+					new_entry = {"word": new_word, "start": end_index + 1, "logprob": entry["logprob"] + math.log10(p), "back": entry} #(end_index + 1, entry[1] + math.log10(p), new_word, entry)
 					# if newentry does not exist in heap:
 					if not(new_entry in heap):
 						self.printTest("endIndex= " + repr(end_index) + " : newEntry= " + self.strEntry(new_entry))
 						# insert newentry into heap
-						heapq.heappush(heap, new_entry)
+						heap.append(new_entry)
 
 		## Get the best segmentation ##
 
@@ -158,11 +172,10 @@ class Segmenter():
 		# The best segmentation starts from finalentry and follows the back-pointer recursively until the first word
 		while None != final_entry:
 			self.printTest("final[ 0 ]: " + self.strEntry(final_entry))
-			seg.append(final_entry[2])
-			final_entry = final_entry[3]
+			seg.append(final_entry["word"])
+			final_entry = final_entry["back"]
 		self.printTest("")
 		return " ".join(seg[: : -1])
-
 
 s = Segmenter(opts.input)
 #print s.segmentLine(s.lines[4])
