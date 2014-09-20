@@ -190,10 +190,14 @@ class Segmenter():
 	# combine some single characters into words
 	def combineSingle(self, seg):
 		combine = ""
+		index = 0
 		# check each single character
-		for index, word in enumerate(seg):
+		while index < len(seg):
+			word = seg[index]
+			self.printTest("word: " + word + " len: " + repr(len(word)) + " in: " + repr(word in Pw))
 			# if a single character, and it is unknown or rare
-			if 1 == len(word) and (not (word in Pw) or Pw[word] <= 5 ):
+			if 1 == len(word) and (not (word in Pw) or Pw[word] <= 6 ):
+				self.printTest("single: " + word)
 				# combine it
 				combine += word
 			# if not, combine previous ones
@@ -209,14 +213,14 @@ class Segmenter():
 					next_word = 0
 					if seg[index - len(combine) + 1] in Pw:
 						next_word = Pw[ seg[index - len(combine) + 1] ]
-					# if previous is low, combine with it
-					if previous <= 5 and previous < next_word:
+					# if previous is lower, combine with it
+					if previous <= 6 and previous < next_word:
 						self.printTest("combine1: " + seg[index - len(combine) - 1] + combine + " begin: " + seg[index - len(combine) - 1])
 						seg[index - len(combine) - 1] += combine
 						del seg[index - len(combine) : index]
 						index -= len(combine)
-					# if next is low, combine with it
-					elif next_word <= 5 and previous > next_word:
+					# if next is lower, combine with it
+					elif next_word <= 6 and previous > next_word:
 						self.printTest("combine2: " + combine + seg[index - len(combine) + 1] + " begin: " + combine)
 						seg[index - len(combine) + 1] = combine + seg[index - len(combine) + 1]
 						del seg[index - len(combine) : index]
@@ -228,6 +232,7 @@ class Segmenter():
 					del seg[index - len(combine) : index - 1]
 					index -= len(combine)
 				combine = ""
+			index += 1
 		return seg
 
 	# put missing words back
@@ -265,7 +270,6 @@ class Segmenter():
 s = Segmenter(opts.input)
 ans = s.run()
 s.compareResult()
-
 
 
 
