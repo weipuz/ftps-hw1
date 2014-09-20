@@ -162,8 +162,15 @@ class Segmenter():
 				new_word = sentence[end_index + 1 : i]
 				p = Pw(new_word)
 				if None != p:
-					# newentry = Entry(newword, endindex+1, entry.log-probability + logPw(newword), entry)
-					new_entry = {"word": new_word, "start": end_index + 1, "logprob": entry["logprob"] + math.log10(p), "back": entry} #(end_index + 1, entry[1] + math.log10(p), new_word, entry)
+					p2 = Pw2(entry["word"]+' '+ new_word )
+					if None != p2:
+						p_preword = Pw(entry["word"])
+						new_entry = {"word": new_word, "start": end_index + 1, "logprob": entry["logprob"] + math.log10(p2)-math.log10(p_preword), "back": entry} 
+					  
+					else:
+					   
+					    # newentry = Entry(newword, endindex+1, entry.log-probability + logPw(newword), entry)
+					    new_entry = {"word": new_word, "start": end_index + 1, "logprob": entry["logprob"] + math.log10(p), "back": entry} #(end_index + 1, entry[1] + math.log10(p), new_word, entry)
 					# if newentry does not exist in heap:
 					if not(new_entry in heap):
 						self.printTest("endIndex= " + repr(end_index) + " : newEntry= " + self.strEntry(new_entry))
