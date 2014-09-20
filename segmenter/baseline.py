@@ -46,19 +46,31 @@ class WordDict(dict):
 
 	# call function as dictionary
 	def __call__(self, word, word1 = None, word2 = None, word3 = None):
+		all_words = word
 		# compatible with 2, 3, 4-word model
 		if None != word1:
-			word += word1
+			all_words += word1
 		if None != word2:
-			word += word2
+			all_words += word2
 		if None != word3:
-			word += word3
+			all_words += word3
 		# word exists
-		if word in self:
-			# probability
-			return float(self[word]["count"]) / float(self.total)
+		if all_words in self:
+			# direct probability
+			prob = float(self[all_words]["count"]) / float(self.total)
+			# smoothing
+			if len( self[all_words]["words"] ) > 1:
+				first_prob = self( self[all_words]["words"][0] )
+				if None != first_prob:
+					# Additive Smoothing (slides)
+					delta = 0.5
+					prob = (delta + prob) / (self.total + first_prob)
+					# smooth like discussion/topic/using-bigrams-with-the-iterative-algorithm/
+					k = 0.7
+					prob = k * prob + (1.0 - k) * first_prob
+			return prob
 		# not exist, single character
-		elif 1 == len(word):
+		elif 1 == len(all_words):
 			return 1.0 / self.total
 		# does not exist
 		else:
@@ -77,8 +89,11 @@ class WordDict(dict):
 			count = self.get(utf8key, 0) + int(freq)
 			self.total += count
 			self.maxlen = max(len(utf8key), self.maxlen)
-			# dictionary
-			self["".join(words)] = {"key": utf8key, "words": words, "count": count}
+			all_words = "".join(words)
+			# if not exist, or better
+			if not (all_words in self) or count > self[all_words]["count"] or len(words) < len(self[all_words]["words"]) :
+				# add to dictionary
+				self[all_words] = {"key": utf8key, "words": words, "count": count}
 
 # output the segmented text
 old = sys.stdout
