@@ -10,7 +10,9 @@ optparser.add_option("-i", "--inputfile", dest="input", default=os.path.join('da
 class Pdist(dict):
     "A probability distribution estimated from counts in datafile."
 
+
     def __init__(self, filename, sep='\t', N=None, missingfn=None):
+        self.additional_dict = [u"sdfsdfd"]
         self.maxlen = 0 
         for line in file(filename):
             (key, freq) = line.split(sep)
@@ -25,6 +27,8 @@ class Pdist(dict):
 
     def __call__(self, key):
         if key in self: return float(self[key])/float(self.N)
+        elif key in self.additional_dict:
+			return -1.0
         #else: return self.missingfn(key, self.N)
         elif len(key) == 1: return self.missingfn(key, self.N)
         else: return None
@@ -48,9 +52,9 @@ class Segmenter():
 
 	# load a input file
 	def __init__(self, file):
-		self.text = [ unicode(text.strip(), 'utf-8') for text in open(file) ]
-		self.test_file = codecs.open('test.log', 'w', "utf-8")
-		self.output_file = codecs.open('output.log', 'w', "utf-8")
+		self.text = [ unicode(text.strip(), "utf-8") for text in open(file) ]
+		self.test_file = codecs.open("test.log", "w", "utf-8")
+		self.output_file = codecs.open("output.log", "w", "utf-8")
 
 	# destructor
 	def __exit__(self, type, value, traceback):
@@ -183,40 +187,59 @@ class Segmenter():
 		# check each single character
 		combine = ""
 		for index, word in enumerate(seg):
+			# if a unknown single character
 			if 1 == len(word) and not (word in Pw):
 				combine += word
+			# if not, combine previous ones
 			elif "" != combine:
-				self.printTest("combine: " + combine + " begin: " + seg[index - len(combine)])
-				seg[index - 1] = combine
-				del seg[index - len(combine) : index - 1]
-				index -= len(combine)
+				# if a single character, combine with previous word
+				if 1 == len(combine) and index > 1 and len(seg[index - len(combine) - 1]) == 1:
+					self.printTest("combine-1: " + seg[index - len(combine) - 1] + combine + " begin: " + seg[index - len(combine) - 1])
+					seg[index - len(combine) - 1] += combine
+					del seg[index - len(combine) : index]
+					index -= len(combine)
+				# combine single ones
+				else:
+					self.printTest("combine: " + combine + " begin: " + seg[index - len(combine)])
+					seg[index - 1] = combine
+					del seg[index - len(combine) : index - 1]
+					index -= len(combine)
 				combine = ""
 
 		# put missing words back
-		for index in range( len(seg) ):
-			missing = ""
-			# find missing word
-			for letter in seg[index]:
-				if len(sentence) == 0:
-					break
-				if letter != sentence[0]:
-					missing += sentence[0]
-				sentence = sentence[1 :]
-			if "" != missing:
-				self.printTest("missing: " + missing)
-				seg.insert(index, missing)
-				-- index
-			if len(sentence) == 0:
-				break
+		#for index in range( len(seg) ):
+			#missing = ""
+			## find missing word
+			#for letter in seg[index]:
+				#if len(sentence) == 0:
+					#break
+				#if letter != sentence[0]:
+					#missing += sentence[0]
+				#sentence = sentence[1 :]
+			#if "" != missing:
+				#self.printTest("missing: " + missing)
+				#seg.insert(index, missing)
+				#-- index
+			#if len(sentence) == 0:
+				#break
 
-		self.printTest("")
-		return " ".join(seg)
+		ans = " ".join(seg)
+		self.printTest(ans + "\n")
+		return ans
+
+	# find wrong segmentation
+	def compareResult(self):
+		output = [ unicode(text.strip(), "utf-8") for text in open("output.log") ]
+		reference = [ unicode(text.strip(), "utf-8") for text in open("data/reference") ]
+		compare = codecs.open("compare.log", "w", "utf-8")
+		for index, sent in enumerate(reference):
+			if sent != output[index]:
+				compare.write("output:\t" + output[index] + "\nrefer:\t" + sent + "\n\n")
 
 s = Segmenter(opts.input)
 #print s.segmentSent(s.text[4])
 ans = s.run()
-for item in ans:
-	print item
+s.compareResult()
 
 
 
