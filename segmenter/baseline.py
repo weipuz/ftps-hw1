@@ -32,6 +32,54 @@ class Pdist(dict):
 # the default segmenter does not use any probabilities, but you could ...
 Pw  = Pdist(opts.counts1w)
 
+# word dictionary with universal interfaces
+class WordDict(dict):
+	"dictionary of Chinese words and their counts"
+
+	# initialize by input file
+	def __init__(self, filenames=["data/count_1w.txt"]):
+		self.maxlen = 0
+		self.total = 0
+		# load each file, and combine them
+		for name in filenames:
+			self.load(name)
+
+	# call function as dictionary
+	def __call__(self, word, word1 = None, word2 = None, word3 = None):
+		# compatible with 2, 3, 4-word model
+		if None != word1:
+			word += word1
+		if None != word2:
+			word += word2
+		if None != word3:
+			word += word3
+		# word exists
+		if word in self:
+			# probability
+			return float(self[word]["count"]) / float(self.total)
+		# not exist, single character
+		elif 1 == len(word):
+			return 1.0 / self.total
+		# does not exist
+		else:
+			return None
+
+	# load dictionary from file
+	def load(self, filename):
+		for line in file(filename):
+			(key, freq) = line.split("\t")
+			try:
+				utf8key = unicode(key, 'utf-8')
+			except:
+				raise ValueError("Unexpected error %s" % (sys.exc_info()[0]))
+			# all words
+			words = utf8key.split(" ")
+			count = self.get(utf8key, 0) + int(freq)
+			self.total += count
+			self.maxlen = max(len(utf8key), self.maxlen)
+			# dictionary
+			self["".join(words)] = {"key": utf8key, "words": words, "count": count}
+
 # output the segmented text
 old = sys.stdout
 sys.stdout = codecs.lookup('utf-8')[-1](sys.stdout)
@@ -46,11 +94,13 @@ sys.stdout = old
 class Segmenter():
 	"segmenter"
 
-	# load a input file
-	def __init__(self, file):
+	# load a input file and dictionary file
+	def __init__(self, file, dict_paths = [opts.counts1w]):
 		self.text = [ unicode(text.strip(), "utf-8") for text in open(file) ]
 		self.test_file = codecs.open("test.log", "w", "utf-8")
 		self.output_file = codecs.open("output.log", "w", "utf-8")
+		# create a dictionary
+		self.dict = WordDict(dict_paths)
 
 	# destructor
 	def __exit__(self, type, value, traceback):
@@ -118,9 +168,9 @@ class Segmenter():
 		## Initialize the heap ##
 
 		# for each word that matches input at position 0
-		for i in range(1, self.min(len(sentence) + 1, Pw.maxlen)):
+		for i in range(1, self.min(len(sentence) + 1, self.dict.maxlen)):
 			word = sentence[: i]
-			p = Pw(word)
+			p = self.dict(word)
 			if p != None:
 				# insert Entry(word, 0, logPw(word), None) into heap
 				entry = {"word": word, "start": 0, "logprob": math.log10(p), "back": None} #(0, math.log10(p), word, None)
@@ -155,7 +205,7 @@ class Segmenter():
 			# for each newword that matches input starting at position endindex+1
 			for i in range(end_index + 2, len(sentence) + 1):
 				new_word = sentence[end_index + 1 : i]
-				p = Pw(new_word)
+				p = self.dict(new_word)
 				if None != p:
 					# newentry = Entry(newword, endindex+1, entry.log-probability + logPw(newword), entry)
 					new_entry = {"word": new_word, "start": end_index + 1, "logprob": entry["logprob"] + math.log10(p), "back": entry} #(end_index + 1, entry[1] + math.log10(p), new_word, entry)
@@ -180,6 +230,7 @@ class Segmenter():
 		# reverse it
 		seg = seg[: : -1]
 
+		seg = self.separateMultiple(seg)
 		seg = self.combineSingle(seg)
 		seg = self.restoreMissing(seg, sentence)
 
@@ -187,17 +238,29 @@ class Segmenter():
 		self.printTest(ans + "\n")
 		return ans
 
+	# separate multiple words in an item in a dictionary
+	def separateMultiple(self, seg):
+		index = 0
+		while index < len(seg):
+			word = seg[index]
+			if word in self.dict:
+				seg[index] = self.dict[word]["words"][0]
+				for i in range(1, len( self.dict[word]["words"] )):
+					seg.insert(index + i, self.dict[word]["words"][i])
+				index += len( self.dict[word]["words"] ) - 1
+			index += 1
+		return seg
+
 	# combine some single characters into words
-	def combineSingle(self, seg):
+	def combineSingle(self, seg, threshold = 8.0e-5):
 		combine = ""
 		index = 0
 		# check each single character
+		# cannot modify iterator if use for loop
 		while index < len(seg):
 			word = seg[index]
-			self.printTest("word: " + word + " len: " + repr(len(word)) + " in: " + repr(word in Pw))
 			# if a single character, and it is unknown or rare
-			if 1 == len(word) and (not (word in Pw) or Pw[word] <= 6 ):
-				self.printTest("single: " + word)
+			if 1 == len(word) and (not (word in self.dict) or self.dict(word) <= threshold ):
 				# combine it
 				combine += word
 			# if not, combine previous ones
@@ -205,22 +268,22 @@ class Segmenter():
 				# if a single character
 				if 1 == len(combine):
 					# get value of previous, next words
-					previous = 0
+					previous = - sys.float_info.max
 					if index <= 1:
-						previous = sys.maxint
-					elif seg[index - len(combine) - 1] in Pw:
-						previous = Pw[ seg[index - len(combine) - 1] ]
-					next_word = 0
-					if seg[index - len(combine) + 1] in Pw:
-						next_word = Pw[ seg[index - len(combine) + 1] ]
+						previous = sys.float_info.max
+					elif seg[index - len(combine) - 1] in self.dict:
+						previous = self.dict( seg[index - len(combine) - 1] )
+					next_word = - sys.float_info.max
+					if seg[index - len(combine) + 1] in self.dict:
+						next_word = self.dict( seg[index - len(combine) + 1] )
 					# if previous is lower, combine with it
-					if previous <= 6 and previous < next_word:
+					if previous <= threshold and previous < next_word:
 						self.printTest("combine1: " + seg[index - len(combine) - 1] + combine + " begin: " + seg[index - len(combine) - 1])
 						seg[index - len(combine) - 1] += combine
 						del seg[index - len(combine) : index]
 						index -= len(combine)
 					# if next is lower, combine with it
-					elif next_word <= 6 and previous > next_word:
+					elif next_word <= threshold and previous > next_word:
 						self.printTest("combine2: " + combine + seg[index - len(combine) + 1] + " begin: " + combine)
 						seg[index - len(combine) + 1] = combine + seg[index - len(combine) + 1]
 						del seg[index - len(combine) : index]
@@ -267,7 +330,7 @@ class Segmenter():
 				compare.write("output:\t" + output[index] + "\nrefer:\t" + sent + "\n\n")
 		compare.write("count: " + repr(count) + "\n")
 
-s = Segmenter(opts.input)
+s = Segmenter(opts.input, [opts.counts1w, opts.counts2w])
 ans = s.run()
 s.compareResult()
 
