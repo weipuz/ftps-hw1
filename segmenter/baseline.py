@@ -10,9 +10,7 @@ optparser.add_option("-i", "--inputfile", dest="input", default=os.path.join('da
 class Pdist(dict):
     "A probability distribution estimated from counts in datafile."
 
-
     def __init__(self, filename, sep='\t', N=None, missingfn=None):
-        self.additional_dict = [u"sdfsdfd"]
         self.maxlen = 0 
         for line in file(filename):
             (key, freq) = line.split(sep)
@@ -27,8 +25,6 @@ class Pdist(dict):
 
     def __call__(self, key):
         if key in self: return float(self[key])/float(self.N)
-        elif key in self.additional_dict:
-			return -1.0
         #else: return self.missingfn(key, self.N)
         elif len(key) == 1: return self.missingfn(key, self.N)
         else: return None
@@ -128,7 +124,7 @@ class Segmenter():
 			if p != None:
 				# insert Entry(word, 0, logPw(word), None) into heap
 				entry = {"word": word, "start": 0, "logprob": math.log10(p), "back": None} #(0, math.log10(p), word, None)
-				self.printTest("Adding: " + entry["word"] + " " + repr(entry["logprob"]) )
+				#self.printTest("Adding: " + entry["word"] + " " + repr(entry["logprob"]) )
 				heap.append(entry)
 
 		## Iteratively fill in chart[i] for all i ##
@@ -139,9 +135,9 @@ class Segmenter():
 			entry = self.heapPop(heap)
 			if None == entry:
 				break
-			self.printTest( "pop: word=" + entry["word"] + " logprob=" + repr(entry["logprob"]) )
 			# get the endindex based on the length of the word in entry
 			end_index = entry["start"] + len(entry["word"]) - 1
+			#self.printTest( "pop: endindex=" + repr(end_index) + " word=" + entry["word"] + " logprob=" + repr(entry["logprob"]) )
 			# if chart[endindex] has a previous entry, preventry
 			if end_index < len(chart) and None != chart[end_index] and None != chart[end_index]["back"]:
 				prev_entry = chart[end_index]["back"]
@@ -165,7 +161,7 @@ class Segmenter():
 					new_entry = {"word": new_word, "start": end_index + 1, "logprob": entry["logprob"] + math.log10(p), "back": entry} #(end_index + 1, entry[1] + math.log10(p), new_word, entry)
 					# if newentry does not exist in heap:
 					if not(new_entry in heap):
-						self.printTest("endIndex= " + repr(end_index) + " : newEntry= " + self.strEntry(new_entry))
+						#self.printTest("endIndex= " + repr(end_index) + " : newEntry= " + self.strEntry(new_entry))
 						# insert newentry into heap
 						heap.append(new_entry)
 
@@ -184,20 +180,47 @@ class Segmenter():
 		# reverse it
 		seg = seg[: : -1]
 
-		# check each single character
+		seg = self.combineSingle(seg)
+		seg = self.restoreMissing(seg, sentence)
+
+		ans = " ".join(seg)
+		self.printTest(ans + "\n")
+		return ans
+
+	# combine some single characters into words
+	def combineSingle(self, seg):
 		combine = ""
+		# check each single character
 		for index, word in enumerate(seg):
-			# if a unknown single character
-			if 1 == len(word) and not (word in Pw):
+			# if a single character, and it is unknown or rare
+			if 1 == len(word) and (not (word in Pw) or Pw[word] <= 5 ):
+				# combine it
 				combine += word
 			# if not, combine previous ones
 			elif "" != combine:
-				# if a single character, combine with previous word
-				if 1 == len(combine) and index > 1 and len(seg[index - len(combine) - 1]) == 1:
-					self.printTest("combine-1: " + seg[index - len(combine) - 1] + combine + " begin: " + seg[index - len(combine) - 1])
-					seg[index - len(combine) - 1] += combine
-					del seg[index - len(combine) : index]
-					index -= len(combine)
+				# if a single character
+				if 1 == len(combine):
+					# get value of previous, next words
+					previous = 0
+					if index <= 1:
+						previous = sys.maxint
+					elif seg[index - len(combine) - 1] in Pw:
+						previous = Pw[ seg[index - len(combine) - 1] ]
+					next_word = 0
+					if seg[index - len(combine) + 1] in Pw:
+						next_word = Pw[ seg[index - len(combine) + 1] ]
+					# if previous is low, combine with it
+					if previous <= 5 and previous < next_word:
+						self.printTest("combine1: " + seg[index - len(combine) - 1] + combine + " begin: " + seg[index - len(combine) - 1])
+						seg[index - len(combine) - 1] += combine
+						del seg[index - len(combine) : index]
+						index -= len(combine)
+					# if next is low, combine with it
+					elif next_word <= 5 and previous > next_word:
+						self.printTest("combine2: " + combine + seg[index - len(combine) + 1] + " begin: " + combine)
+						seg[index - len(combine) + 1] = combine + seg[index - len(combine) + 1]
+						del seg[index - len(combine) : index]
+						index -= len(combine)
 				# combine single ones
 				else:
 					self.printTest("combine: " + combine + " begin: " + seg[index - len(combine)])
@@ -205,39 +228,41 @@ class Segmenter():
 					del seg[index - len(combine) : index - 1]
 					index -= len(combine)
 				combine = ""
+		return seg
 
-		# put missing words back
-		#for index in range( len(seg) ):
-			#missing = ""
-			## find missing word
-			#for letter in seg[index]:
-				#if len(sentence) == 0:
-					#break
-				#if letter != sentence[0]:
-					#missing += sentence[0]
-				#sentence = sentence[1 :]
-			#if "" != missing:
-				#self.printTest("missing: " + missing)
-				#seg.insert(index, missing)
-				#-- index
-			#if len(sentence) == 0:
-				#break
-
-		ans = " ".join(seg)
-		self.printTest(ans + "\n")
-		return ans
+	# put missing words back
+	def restoreMissing(self, seg, sentence):
+		for index in range( len(seg) ):
+			missing = ""
+			# find missing word
+			for letter in seg[index]:
+				if len(sentence) == 0:
+					break
+				if letter != sentence[0]:
+					missing += sentence[0]
+				sentence = sentence[1 :]
+			# put missing words back
+			if "" != missing:
+				self.printTest("missing: " + missing)
+				seg.insert(index, missing)
+				index -= 1
+			if len(sentence) == 0:
+				break
+		return seg
 
 	# find wrong segmentation
 	def compareResult(self):
 		output = [ unicode(text.strip(), "utf-8") for text in open("output.log") ]
 		reference = [ unicode(text.strip(), "utf-8") for text in open("data/reference") ]
 		compare = codecs.open("compare.log", "w", "utf-8")
+		count = 0
 		for index, sent in enumerate(reference):
 			if sent != output[index]:
+				count += 1
 				compare.write("output:\t" + output[index] + "\nrefer:\t" + sent + "\n\n")
+		compare.write("count: " + repr(count) + "\n")
 
 s = Segmenter(opts.input)
-#print s.segmentSent(s.text[4])
 ans = s.run()
 s.compareResult()
 
