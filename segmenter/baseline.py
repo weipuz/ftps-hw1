@@ -1,5 +1,11 @@
 
 import sys, codecs, optparse, os, math
+from nltk.probability import FreqDist
+import nltk
+
+reload(sys) 
+sys.setdefaultencoding('UTF8')
+
 # parse the input command lines
 optparser = optparse.OptionParser()
 optparser.add_option("-c", "--unigramcounts", dest='counts1w', default=os.path.join('data', 'count_1w.txt'), help="unigram counts")
@@ -112,22 +118,23 @@ class Segmenter():
 	# load a input file and dictionary file
 	def __init__(self, file, dict_paths = [opts.counts1w]):
 		self.text = [ unicode(text.strip(), "utf-8") for text in open(file) ]
-		self.test_file = codecs.open("test.log", "w", "utf-8")
-		self.output_file = codecs.open("output.log", "w", "utf-8")
+		self.test_file = open("test.log", "w")
+		self.output_file = open("output.log", "w")
 		# create a dictionary
 		self.dict = WordDict(dict_paths)
 
 	# destructor
 	def __exit__(self, type, value, traceback):
+		self.output_file.close()
 		self.test_file.close()
 
 	# print the test comments
 	def printTest(self, output):
-		self.test_file.write(output + "\n")
+		self.test_file.write(output + unicode("\n",'utf-8'))
 
 	# print output to file
 	def printOutput(self, output):
-		self.output_file.write(output + "\n")
+		self.output_file.write(output + unicode("\n",'utf-8'))
 
 	def min(self, num0, num1):
 		if num0 < num1:
@@ -247,7 +254,7 @@ class Segmenter():
 
 		seg = self.separateMultiple(seg)
 		seg = self.combineSingle(seg)
-		seg = self.restoreMissing(seg, sentence)
+		#seg = self.restoreMissing(seg, sentence)
 
 		ans = " ".join(seg)
 		self.printTest(ans + "\n")
@@ -335,15 +342,17 @@ class Segmenter():
 
 	# find wrong segmentation
 	def compareResult(self):
-		output = [ unicode(text.strip(), "utf-8") for text in open("output.log") ]
-		reference = [ unicode(text.strip(), "utf-8") for text in open("data/reference") ]
-		compare = codecs.open("compare.log", "w", "utf-8")
-		count = 0
-		for index, sent in enumerate(reference):
-			if sent != output[index]:
-				count += 1
-				compare.write("output:\t" + output[index] + "\nrefer:\t" + sent + "\n\n")
-		compare.write("count: " + repr(count) + "\n")
+		with open("output.log") as f:
+		    output = list(f)
+		with open("data/reference") as ref:
+			reference = list(ref)
+		with open("compare.log","w") as compare:
+			count = 0
+			for index,sent in enumerate(reference):
+				if index < len(output) and output[index] != sent:
+					count += 1
+					compare.write("output:\t" + output[index] + "refer:\t" + sent + "\n")
+			compare.write("count: " + repr(count) + "\n")
 
 s = Segmenter(opts.input, [opts.counts1w, opts.counts2w])
 ans = s.run()
