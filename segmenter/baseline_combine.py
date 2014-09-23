@@ -1,5 +1,11 @@
 
 import sys, codecs, optparse, os, math
+from nltk.probability import FreqDist
+import nltk
+
+reload(sys) 
+sys.setdefaultencoding('UTF8')
+
 # parse the input command lines
 optparser = optparse.OptionParser()
 optparser.add_option("-c", "--unigramcounts", dest='counts1w', default=os.path.join('data', 'count_1w.txt'), help="unigram counts")
@@ -95,16 +101,7 @@ class WordDict(dict):
 				# add to dictionary
 				self[all_words] = {"key": utf8key, "words": words, "count": count}
 
-# output the segmented text
-old = sys.stdout
-sys.stdout = codecs.lookup('utf-8')[-1](sys.stdout)
-# ignoring the dictionary provided in opts.counts
-with open(opts.input) as f:
-    for line in f:
-        utf8line = unicode(line.strip(), 'utf-8')
-        output = [i for i in utf8line]  # segmentation is one word per character in the input
-        #print " ".join(output)
-sys.stdout = old
+
 
 class Segmenter():
 	"segmenter"
@@ -112,8 +109,10 @@ class Segmenter():
 	# load a input file and dictionary file
 	def __init__(self, file, dict_paths = [opts.counts1w]):
 		self.text = [ unicode(text.strip(), "utf-8") for text in open(file) ]
-		self.test_file = codecs.open("test.log", "w", "utf-8")
-		self.output_file = codecs.open("output.log", "w", "utf-8")
+		#self.test_file = codecs.open("test", "w", "utf-8")
+		self.test_file = open("test", "w")
+		#self.output_file = codecs.open("output", "w", "utf-8")
+		self.output_file = open("output", "w")
 		# create a dictionary
 		self.dict = WordDict(dict_paths)
 
@@ -123,11 +122,11 @@ class Segmenter():
 
 	# print the test comments
 	def printTest(self, output):
-		self.test_file.write(output + "\n")
+		self.test_file.write(output + unicode("\n",'utf-8'))
 
 	# print output to file
 	def printOutput(self, output):
-		self.output_file.write(output + "\n")
+		self.output_file.write(output + unicode("\n",'utf-8'))
 
 	def min(self, num0, num1):
 		if num0 < num1:
@@ -247,7 +246,7 @@ class Segmenter():
 
 		seg = self.separateMultiple(seg)
 		seg = self.combineSingle(seg)
-		seg = self.restoreMissing(seg, sentence)
+		#seg = self.restoreMissing(seg, sentence)
 
 		ans = " ".join(seg)
 		self.printTest(ans + "\n")
@@ -335,24 +334,39 @@ class Segmenter():
 
 	# find wrong segmentation
 	def compareResult(self):
-		output = [ unicode(text.strip(), "utf-8") for text in open("output.log") ]
-		reference = [ unicode(text.strip(), "utf-8") for text in open("data/reference") ]
-		compare = codecs.open("compare.log", "w", "utf-8")
-		count = 0
-		for index, sent in enumerate(reference):
-			if sent != output[index]:
-				count += 1
-				compare.write("output:\t" + output[index] + "\nrefer:\t" + sent + "\n\n")
-		compare.write("count: " + repr(count) + "\n")
+		
+		with open("output") as f:
+		    output = list(f)
+			
+		with open("data/reference") as ref:
+			reference = list(ref)
+		
+		if len(output) != len(reference):
+		    raise ValueError("Error: output and reference do not have identical number of lines")
+		else:
+		    with open("compare.log","w") as compare:
+				for index,sent in enumerate(reference):
+					compare.write("output:\t" + output[index] + "\nrefer:\t" + sent + "\n\n")
+					#compare.write("count: " + repr(count) + "\n")
 
 s = Segmenter(opts.input, [opts.counts1w, opts.counts2w])
 ans = s.run()
+s.output_file.close()
 s.compareResult()
 
 
+# output the segmented text
+old = sys.stdout
+sys.stdout = codecs.lookup('utf-8')[-1](sys.stdout)
+# ignoring the dictionary provided in opts.counts
+# with open(opts.input) as f:
+    # for line in f:
+        # utf8line = unicode(line.strip(), 'utf-8')
+        # output = [i for i in utf8line]  # segmentation is one word per character in the input
+        # #print " ".join(output)
 
 
-
+sys.stdout = old
 
 
 
