@@ -110,9 +110,9 @@ class Segmenter():
 	def __init__(self, file, dict_paths = [opts.counts1w]):
 		self.text = [ unicode(text.strip(), "utf-8") for text in open(file) ]
 		#self.test_file = codecs.open("test", "w", "utf-8")
-		self.test_file = open("test", "w")
+		self.test_file = open("test.log", "w")
 		#self.output_file = codecs.open("output", "w", "utf-8")
-		self.output_file = open("output", "w")
+		self.output_file = open("output.log", "w")
 		# create a dictionary
 		self.dict = WordDict(dict_paths)
 
@@ -335,7 +335,7 @@ class Segmenter():
 	# find wrong segmentation
 	def compareResult(self):
 		
-		with open("output") as f:
+		with open("output.log") as f:
 		    output = list(f)
 			
 		with open("data/reference") as ref:
@@ -352,6 +352,7 @@ class Segmenter():
 s = Segmenter(opts.input, [opts.counts1w, opts.counts2w])
 ans = s.run()
 s.output_file.close()
+s.test_file.close()
 s.compareResult()
 
 
