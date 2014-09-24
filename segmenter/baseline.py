@@ -70,7 +70,7 @@ class WordDict(dict):
 				if None != first_prob:
 					# Additive Smoothing (slides)
 					delta = 0.5
-					prob = (delta + prob) / (self.total + first_prob)
+					prob = float(delta + prob) / float(self.total + first_prob)
 					# smooth like discussion/topic/using-bigrams-with-the-iterative-algorithm/
 					k = 0.7
 					prob = k * prob + (1.0 - k) * first_prob
@@ -101,6 +101,22 @@ class WordDict(dict):
 				# add to dictionary
 				self[all_words] = {"key": utf8key, "words": words, "count": count}
 
+	def learnText(self, filename):
+		LEARNING_RATE = 0.01
+		text = [ unicode(text.strip(), "utf-8") for text in open(filename) ]
+		for sent in text:
+			for i in range(0, len(sent)):
+				for j in range(1, min(len(sent), self.maxlen / 3)):
+					word = sent[i : i + j]
+					if word in self:
+						self[word]["count"] += LEARNING_RATE
+					else:
+						self[word] = {"key": word, "words": [word], "count": LEARNING_RATE}
+		with open("dictionary.log","w") as d:
+			for word in self:
+				if "count" in self[word]:
+					d.write("word: " + word + " key: " + self[word]["key"] + " words len: " + repr( len(self[word]["words"]) ) + " count: " + repr(self[word]["count"]) + "\n")
+
 # output the segmented text
 old = sys.stdout
 sys.stdout = codecs.lookup('utf-8')[-1](sys.stdout)
@@ -118,8 +134,8 @@ class Segmenter():
 	# load a input file and dictionary file
 	def __init__(self, file, dict_paths = [opts.counts1w]):
 		self.text = [ unicode(text.strip(), "utf-8") for text in open(file) ]
-		self.test_file = open("test.log", "w")
-		self.output_file = open("output.log", "w")
+		self.test_file = codecs.open("test.log", "w", "utf-8")
+		self.output_file = codecs.open("output.log", "w", "utf-8")
 		# create a dictionary
 		self.dict = WordDict(dict_paths)
 
@@ -149,6 +165,7 @@ class Segmenter():
 			s += entry["back"]["word"]
 		else:
 			s += "None"
+		s += ")"
 		return s
 
 	# pop the top of a heap
@@ -196,7 +213,7 @@ class Segmenter():
 			if p != None:
 				# insert Entry(word, 0, logPw(word), None) into heap
 				entry = {"word": word, "start": 0, "logprob": math.log10(p), "back": None} #(0, math.log10(p), word, None)
-				#self.printTest("Adding: " + entry["word"] + " " + repr(entry["logprob"]) )
+				self.printTest("Adding: " + entry["word"] + " " + repr(entry["logprob"]) )
 				heap.append(entry)
 
 		## Iteratively fill in chart[i] for all i ##
@@ -209,12 +226,13 @@ class Segmenter():
 				break
 			# get the endindex based on the length of the word in entry
 			end_index = entry["start"] + len(entry["word"]) - 1
-			#self.printTest( "pop: endindex=" + repr(end_index) + " word=" + entry["word"] + " logprob=" + repr(entry["logprob"]) )
+			self.printTest( "pop: endindex=" + repr(end_index) + " word=" + entry["word"] + " logprob=" + repr(entry["logprob"]) )
 			# if chart[endindex] has a previous entry, preventry
 			if end_index < len(chart) and None != chart[end_index] and None != chart[end_index]["back"]:
 				prev_entry = chart[end_index]["back"]
 				# if entry has a higher probability than preventry:
 				if entry["logprob"] > prev_entry["logprob"]:
+					self.printTest( "set: endindex=" + repr(end_index) + " entry=" + self.strEntry(entry) + "instead of: " + self.strEntry(prev_entry) )
 					# chart[endindex] = entry
 					chart[end_index] = entry
 				# if entry has a lower or equal probability than preventry:
@@ -222,6 +240,7 @@ class Segmenter():
 					# we have already found a good segmentation until endindex
 					continue
 			else:
+				self.printTest( "set: endindex=" + repr(end_index) + " entry=" + self.strEntry(entry) )
 				# chart[endindex] = entry
 				chart[end_index] = entry
 			# for each newword that matches input starting at position endindex+1
@@ -233,7 +252,7 @@ class Segmenter():
 					new_entry = {"word": new_word, "start": end_index + 1, "logprob": entry["logprob"] + math.log10(p), "back": entry} #(end_index + 1, entry[1] + math.log10(p), new_word, entry)
 					# if newentry does not exist in heap:
 					if not(new_entry in heap):
-						#self.printTest("endIndex= " + repr(end_index) + " : newEntry= " + self.strEntry(new_entry))
+						self.printTest("endIndex= " + repr(end_index) + " : newEntry= " + self.strEntry(new_entry) + " ownLogProb= " + repr(math.log10(p)))
 						# insert newentry into heap
 						heap.append(new_entry)
 
@@ -342,22 +361,21 @@ class Segmenter():
 
 	# find wrong segmentation
 	def compareResult(self):
-		with open("output.log") as f:
-		    output = list(f)
-		with open("data/reference") as ref:
-			reference = list(ref)
-		with open("compare.log","w") as compare:
-			count = 0
-			for index,sent in enumerate(reference):
-				if index < len(output) and output[index] != sent:
-					count += 1
-					compare.write("output:\t" + output[index] + "refer:\t" + sent + "\n")
-			compare.write("count: " + repr(count) + "\n")
+		output = [ unicode(text.strip(), "utf-8") for text in open("output.log") ]
+		reference = [ unicode(text.strip(), "utf-8") for text in open("data/reference") ]
+		compare = codecs.open("compare.log", "w", "utf-8")
+		count = 0
+		for index, sent in enumerate(reference):
+			if sent != output[index]:
+				count += 1
+				compare.write("output:\t" + output[index] + "\nrefer:\t" + sent + "\n\n")
+		compare.write("count: " + repr(count) + "\n")
+		compare.close()
 
 s = Segmenter(opts.input, [opts.counts1w, opts.counts2w])
+s.dict.learnText(opts.input)
 ans = s.run()
 s.compareResult()
-
 
 
 
