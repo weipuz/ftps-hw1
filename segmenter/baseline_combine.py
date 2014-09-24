@@ -13,6 +13,9 @@ optparser.add_option("-b", "--bigramcounts", dest='counts2w', default=os.path.jo
 optparser.add_option("-i", "--inputfile", dest="input", default=os.path.join('data', 'input'), help="input file to segment")
 (opts, _) = optparser.parse_args()
 
+def missingfn(word,N) :
+	return 1./(N * math.exp(len(word)))
+
 class Pdist(dict):
     "A probability distribution estimated from counts in datafile."
 
@@ -27,16 +30,43 @@ class Pdist(dict):
             self[utf8key] = self.get(utf8key, 0) + int(freq)
             self.maxlen = max(len(utf8key), self.maxlen)
         self.N = float(N or sum(self.itervalues()))
-        self.missingfn = missingfn or (lambda k, N: 1./N)
+        self.missingfn = missingfn or (lambda k, N: 0.01/N)
 
     def __call__(self, key):
         if key in self: return float(self[key])/float(self.N)
         #else: return self.missingfn(key, self.N)
-        elif len(key) == 1: return self.missingfn(key, self.N)
-        else: return None
+        #elif len(key) == 1: return self.missingfn(key, self.N)
+        else: return self.missingfn(key, self.N)
+	
 
-# the default segmenter does not use any probabilities, but you could ...
-Pw  = Pdist(opts.counts1w)
+		
+		
+class Pdist2(dict):
+     "A bi-gram probability distribution estimated from counts in datafile."
+
+     def __init__(self, filename, sep='\t', N=None, missingfn=None):
+         self.maxlen = 0 
+         for line in file(filename):
+             (key, freq) = line.split(sep)
+             try:
+                 utf8key = unicode(key, 'utf-8')
+             except:
+                 raise ValueError("Unexpected error %s" % (sys.exc_info()[0]))
+             self[utf8key] = self.get(utf8key, 0) + int(freq)
+             self.maxlen = max(len(utf8key), self.maxlen)
+         self.N = float(N or sum(self.itervalues()))
+         self.missingfn = missingfn or (lambda k, N: 1./N)
+
+     def __call__(self, key):
+         if key in self: return float(self[key])/float(self.N)
+         #else: return self.missingfn(key, self.N)
+         #elif len(key) == 1: return self.missingfn(key, self.N)
+         else: return 0.0
+# # the default segmenter does not use any probabilities, but you could ...
+Pw1  = Pdist(opts.counts1w)#,'\t',None,missingfn)
+Pw2  = Pdist2(opts.counts2w)
+
+
 
 # word dictionary with universal interfaces
 class WordDict(dict):
@@ -67,17 +97,17 @@ class WordDict(dict):
 			# smoothing
 			if len( self[all_words]["words"] ) > 1:
 				first_prob = self( self[all_words]["words"][0] )
-				if None != first_prob:
+				#if None != first_prob:
 					# Additive Smoothing (slides)
-					delta = 0.5
-					prob = (delta + prob) / (self.total + first_prob)
+					#delta = 0.5
+					#prob = (delta + prob) / (self.total + first_prob)
 					# smooth like discussion/topic/using-bigrams-with-the-iterative-algorithm/
-					k = 0.7
-					prob = k * prob + (1.0 - k) * first_prob
+					#k = 0.95
+					#prob = k * prob + (1.0 - k) * first_prob
 			return prob
 		# not exist, single character
 		elif 1 == len(all_words):
-			return 1.0 / self.total
+			return 0.001 / self.total
 		# does not exist
 		else:
 			return None
@@ -92,7 +122,10 @@ class WordDict(dict):
 				raise ValueError("Unexpected error %s" % (sys.exc_info()[0]))
 			# all words
 			words = utf8key.split(" ")
-			count = self.get(utf8key, 0) + int(freq)
+			if len(words) > 1:
+				count = 45 +  int(freq)
+			else:
+				count = int(freq)
 			self.total += count
 			self.maxlen = max(len(utf8key), self.maxlen)
 			all_words = "".join(words)
@@ -115,6 +148,9 @@ class Segmenter():
 		self.output_file = open("output.log", "w")
 		# create a dictionary
 		self.dict = WordDict(dict_paths)
+		
+		
+		
 
 	# destructor
 	def __exit__(self, type, value, traceback):
@@ -167,6 +203,13 @@ class Segmenter():
 		return ans
 
 	# segment a sentence
+	def pbigram(self, word, preword):
+		lam = 0.6
+		try: 
+			return lam*Pw2(preword +' '+ word)/Pw1(preword)+(1-lam)*Pw1(word)
+		except KeyError:
+			return (1-lam)*Pw(word)
+	
 	def segmentSent(self, sentence):
 		# sentence: the input sequence of characters
 		if 0 == len(sentence):
@@ -182,9 +225,10 @@ class Segmenter():
 		## Initialize the heap ##
 
 		# for each word that matches input at position 0
-		for i in range(1, self.min(len(sentence) + 1, self.dict.maxlen)):
+		for i in range(1, self.min(len(sentence) + 1, 8)):
 			word = sentence[: i]
-			p = self.dict(word)
+			#p = self.dict(word)
+			p = Pw1(word)
 			if p != None:
 				# insert Entry(word, 0, logPw(word), None) into heap
 				entry = {"word": word, "start": 0, "logprob": math.log10(p), "back": None} #(0, math.log10(p), word, None)
@@ -219,9 +263,10 @@ class Segmenter():
 			# for each newword that matches input starting at position endindex+1
 			for i in range(end_index + 2, len(sentence) + 1):
 				new_word = sentence[end_index + 1 : i]
-				p = self.dict(new_word)
-				if None != p:
+				#p = self.dict(new_word)
+				if None != Pw1(new_word):
 					# newentry = Entry(newword, endindex+1, entry.log-probability + logPw(newword), entry)
+					p = self.pbigram(new_word,entry["word"])
 					new_entry = {"word": new_word, "start": end_index + 1, "logprob": entry["logprob"] + math.log10(p), "back": entry} #(end_index + 1, entry[1] + math.log10(p), new_word, entry)
 					# if newentry does not exist in heap:
 					if not(new_entry in heap):
@@ -244,8 +289,8 @@ class Segmenter():
 		# reverse it
 		seg = seg[: : -1]
 
-		seg = self.separateMultiple(seg)
-		seg = self.combineSingle(seg)
+		#seg = self.separateMultiple(seg)
+		#seg = self.combineSingle(seg)
 		#seg = self.restoreMissing(seg, sentence)
 
 		ans = " ".join(seg)
@@ -266,7 +311,7 @@ class Segmenter():
 		return seg
 
 	# combine some single characters into words
-	def combineSingle(self, seg, threshold = 8.0e-5):
+	def combineSingle(self, seg, threshold = 5.0e-5):
 		combine = ""
 		index = 0
 		# check each single character
@@ -346,15 +391,15 @@ class Segmenter():
 		else:
 		    with open("compare.log","w") as compare:
 				for index,sent in enumerate(reference):
-					compare.write("output:\t" + output[index] + "\nrefer:\t" + sent + "\n\n")
-					#compare.write("count: " + repr(count) + "\n")
+					if output[index] != sent:
+						compare.write("output:\t" + output[index] + "\nrefer:\t" + sent + "\n\n")
+						#compare.write("count: " + repr(count) + "\n")
 
 s = Segmenter(opts.input, [opts.counts1w, opts.counts2w])
 ans = s.run()
 s.output_file.close()
 s.test_file.close()
 s.compareResult()
-
 
 # output the segmented text
 old = sys.stdout
